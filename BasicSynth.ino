@@ -12,10 +12,12 @@
 //   Encoder 2 (value edit)   : change value of selected parameter
 //   20x4 I2C LCD shows parameter list, with ">" cursor on selected row
 //
-// Wiring (defaults - change pins below if needed):
-//   Encoder 1 (param select): A=2, B=3, Btn=4
+// Wiring (no pin conflicts with Audio Shield):
+//   Encoder 1 (param select): A=2,  B=3,  Btn=4
 //   Encoder 2 (value edit)  : A=14, B=15, Btn=16
-//   Display: I2C SDA=18, SCL=19, address 0x27
+//   Display: I2C SDA=18, SCL=19 (shared bus with Audio Shield), address 0x27
+//   Audio Shield: GND, 3.3V, SDA=18, SCL=19, MOSI=11, MISO=12, SCK=13,
+//                 MEMCS=6, MCLK=23, BCLK=21, RX=8, TX=7, LRCLK=20
 //
 // MIDI: USB MIDI note on/off triggers both envelopes
 // =============================================================================
@@ -146,6 +148,7 @@ Param params[NUM_PARAMS] = {
 
 int selectedParam = 0;
 bool displayDirty = true;
+float currentBaseFreq = 220.0f; // tracks VCO1 base frequency for detune calc
 
 // Waveform name lookup for VCO wave param
 const char* waveNames[] = { "Sine", "Saw", "Square", "Tri", "Pulse" };
@@ -160,18 +163,18 @@ void applyParam(int id) {
 
   switch (id) {
     case P_VCO1_WAVE:
-      vco1.begin(0.4f, vco1.frequency(), waveShapes[(int)v]);
+      vco1.begin(0.4f, currentBaseFreq, waveShapes[(int)v]);
       break;
 
-    case P_VCO2_WAVE:
-      vco2.begin(0.4f, vco2.frequency(), waveShapes[(int)v]);
+    case P_VCO2_WAVE: {
+      float detuneCents = params[P_VCO2_DETUNE].value;
+      float vco2freq = currentBaseFreq * powf(2.0f, detuneCents / 1200.0f);
+      vco2.begin(0.4f, vco2freq, waveShapes[(int)v]);
       break;
+    }
 
     case P_VCO2_DETUNE: {
-      // recompute VCO2 frequency relative to current note with detune in cents
-      // base freq stored separately; for simplicity, just nudge current freq
-      float base = vco1.frequency(); // track unison with VCO1 base
-      float detuned = base * powf(2.0f, v / 1200.0f);
+      float detuned = currentBaseFreq * powf(2.0f, v / 1200.0f);
       vco2.frequency(detuned);
       break;
     }
@@ -303,6 +306,7 @@ void onNoteOn(byte channel, byte note, byte velocity) {
 
   currentNote = note;
   float freq = 440.0f * powf(2.0f, (note - 69) / 12.0f);
+  currentBaseFreq = freq;
 
   vco1.frequency(freq);
 
