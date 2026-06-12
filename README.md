@@ -1,113 +1,105 @@
-# SynthTemplate — Teensy 4.0 + Audio Shield
+# BasicSynth — Teensy 4.0 + Audio Shield
 
-A modular synthesizer template. Each "library" is a self-contained `.h` file.
-Build a new synth by including the modules you need and writing a thin `.ino`.
+A 2-VCO subtractive synth with LFO, filter, and dual ADSR, controlled via
+two encoders and a 20x4 LCD.
 
----
-
-## File layout
+## Signal flow
 
 ```
-SynthTemplate/
-├── SynthTemplate.h      ← orchestrator: audio shield, MIDI, helpers
-├── Lib_Encoder.h        ← rotary encoders with push button
-├── Lib_Display.h        ← 20×4 LCD or 128×64 OLED
-├── Lib_VCO.h            ← AudioSynthWaveform wrapper
-├── Lib_Filter.h         ← AudioFilterStateVariable wrapper
-├── Lib_Envelope.h       ← AudioEffectEnvelope (ADSR) wrapper
-└── MySynth.ino          ← example: monophonic subtractive synth
+VCO1 ─┐
+      ├─> Mixer ──> VCF (state-variable) ──> VCA ──> Output L/R
+VCO2 ─┘                  ▲                    ▲
+                          │                    │
+LFO ──> (FM into VCO1/2)  │                    │
+                    ADSR1 ┘              ADSR2 ┘
+                  (filter env)         (amp env)
 ```
 
----
+- **VCO1**: sine by default
+- **VCO2**: sawtooth by default, with adjustable detune
+- **LFO**: modulates pitch of both VCOs (vibrato) — rate and depth adjustable
+- **VCF**: state-variable filter, cutoff/resonance adjustable, modulated by ADSR1
+- **ADSR1**: filter envelope (cutoff modulation amount via "Filter Env Amt")
+- **ADSR2**: amplitude envelope (controls VCA gain)
+- **VCA**: final output stage
 
-## How to make a new synth
+## Wiring
 
-1. Copy this folder and rename the `.ino` to `YourSynth.ino`
-2. In `SynthTemplate.h`, comment out modules you don't need
-3. Declare your audio objects + `AudioConnection` patch cords in the `.ino`
-4. Wire MIDI callbacks and encoder/display updates in `setup()` / `loop()`
+### Encoders
+| Function | Pins (A, B, Button) |
+|---|---|
+| Encoder 1 — Parameter Select | 2, 3, 4 |
+| Encoder 2 — Value Edit       | 5, 6, 7 |
 
----
+Each encoder needs GND and 3.3V as well. Internal pullups are used for buttons.
 
-## Module quick reference
+### Display (20x4 LCD, I2C)
+| LCD Pin | Teensy Pin |
+|---|---|
+| SDA | 18 |
+| SCL | 19 |
+| VCC | 5V or 3.3V (check your LCD board) |
+| GND | GND |
 
-### VCO (Lib_VCO.h)
-```cpp
-VCO osc;
-osc.begin(WAVE_SAW);
-osc.noteOn(midiNote, velocityNorm);
-osc.noteOff();
-osc.setDetune(cents);       // −100 to +100 cents
-osc.setShape(WAVE_SQUARE);
-osc.setPulseWidth(0.3f);    // for WAVE_PULSE only
+Default I2C address: `0x27`. If your display doesn't show anything, try `0x3F`
+(change in `BasicSynth.ino`: `LiquidCrystal_I2C lcd(0x3F, 20, 4);`)
+
+### Audio Shield
+See breadboard wiring table from earlier — I2C (18/19), SPI (11/12/13),
+MEMCS (6), and I2S (7, 8, 20, 21, 23) all required.
+
+## Controls
+
+- **Encoder 1** (turn): scroll through the parameter list (cursor `>` shows selection)
+- **Encoder 2** (turn): change the value of the currently selected parameter
+- Display shows 4 parameters at a time, auto-scrolling to keep selection visible
+
+## Parameters
+
+| Parameter | Range | Notes |
+|---|---|---|
+| VCO1 Wave | Sine/Saw/Square/Tri/Pulse | |
+| VCO2 Wave | Sine/Saw/Square/Tri/Pulse | |
+| VCO2 Detune | -100 to +100 cents | relative to VCO1 |
+| LFO Rate | 0.1 - 20 Hz | |
+| LFO Depth | 0-100% | 0 = off |
+| VCF Cutoff | 20-20000 Hz | |
+| VCF Resonance | 0.7-5.0 Q | |
+| ADSR1 Attack/Decay/Sustain/Release | filter envelope | |
+| ADSR2 Attack/Decay/Sustain/Release | amplitude envelope | |
+| Filter Env Amt | 0-100% | how much ADSR1 affects cutoff |
+
+## MIDI
+
+Connect via USB MIDI (compile with `USB_MIDI_SERIAL` to also get serial debug).
+Sending a Note On triggers both envelopes; Note Off releases them.
+
+## Compile & upload
+
+```bash
+arduino-cli compile --fqbn teensy:avr:teensy40 \
+  --build-property "build.usbtype=USB_MIDI_SERIAL" .
+
+arduino-cli upload --fqbn teensy:avr:teensy40 --port /dev/ttyACM0 .
 ```
 
-### VCFilter (Lib_Filter.h)
-```cpp
-VCFilter filt;
-filt.begin();
-filt.setCutoffNorm(0.5f);   // 0.0–1.0 logarithmic
-filt.setResonanceNorm(0.3f);
-filt.setEnvelopeAmount(0.8f);
-filt.applyEnvelopeMod(envValue); // call from envelope callback
-// Audio outputs: filt.svf — port 0=LP, 1=BP, 2=HP
+## Required libraries
+
+```bash
+arduino-cli lib install "MIDI Library"
+arduino-cli lib install "Encoder"
+arduino-cli lib install "LiquidCrystal I2C"
 ```
 
-### Envelope (Lib_Envelope.h)
-```cpp
-Envelope env;
-env.begin(attack_ms, decay_ms, sustain_0to1, release_ms);
-env.noteOn();
-env.noteOff();
-env.setAttackNorm(0.1f);  // normalised setters
-```
+(Teensy Audio library is bundled with the Teensy core.)
 
-### EncoderKnob (Lib_Encoder.h)
-```cpp
-EncoderKnob enc(pinA, pinB, pinButton);
-enc.begin();
-enc.update();          // call every loop()
-enc.position();        // current absolute position
-enc.delta();           // change since last update
-enc.pressed();         // true on button press edge
-```
+## Notes / things to tune
 
-### SynthDisplay (Lib_Display.h)
-```cpp
-SynthDisplay disp;     // defaults to 0x27 I2C LCD
-disp.begin();
-disp.header("MySynth");
-disp.printParam(row, "Cutoff", "800Hz");
-disp.print(row, "Any string");
-```
-
----
-
-## Required libraries (install via Arduino Library Manager)
-
-| Library                   | Used by         |
-|---------------------------|-----------------|
-| Teensy Audio              | VCO, Filter, Env |
-| MIDI Library              | SynthTemplate.h |
-| Encoder                   | Lib_Encoder.h   |
-| LiquidCrystal I2C         | Lib_Display.h   |
-| Adafruit SSD1306 + GFX    | Lib_Display.h (OLED) |
-
----
-
-## Audio memory
-
-`AudioMemory(120)` is set in `SynthTemplate::init()`. Increase this if you add
-many voices or effects and hear glitches. Each block is 128 samples × 2 bytes = 256 bytes.
-
----
-
-## Ideas for additional modules
-
-- `Lib_LFO.h` — `AudioSynthWaveformDc` + `AudioSynthWaveform` for modulation
-- `Lib_Arpeggiator.h` — note queue stepped by `elapsedMillis`
-- `Lib_Sequencer.h` — step sequencer with `elapsedMillis`
-- `Lib_Chorus.h` — `AudioEffectChorus` wrapper
-- `Lib_Reverb.h` — `AudioEffectReverb` or `AudioEffectFreeverb` wrapper
-- `Lib_Delay.h` — `AudioEffectDelay` wrapper
-- `Lib_Mixer.h` — named channel `AudioMixer4` wrapper
+- VCO1 is currently treated as the "base" pitch reference; VCO2 detune is
+  applied relative to it on each Note On.
+- LFO is wired into the FM input of both VCOs — at depth 0 it has no effect.
+  Increase "LFO Depth" to hear vibrato.
+- "Filter Env Amt" controls `octaveControl()` on the state-variable filter —
+  this scales how many octaves ADSR1 can sweep the cutoff.
+- If the filter self-oscillates unpleasantly at high resonance, that's normal
+  SVF behaviour near Q=5.
