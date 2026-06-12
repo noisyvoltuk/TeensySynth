@@ -29,7 +29,7 @@ LFO ──> (FM into VCO1/2)  │                    │
 | Function | Pins (A, B, Button) |
 |---|---|
 | Encoder 1 — Parameter Select | 2, 3, 4 |
-| Encoder 2 — Value Edit       | 5, 6, 7 |
+| Encoder 2 — Value Edit       | 14, 15, 16 |
 
 Each encoder needs GND and 3.3V as well. Internal pullups are used for buttons.
 
