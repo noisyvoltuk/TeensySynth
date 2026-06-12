@@ -14,7 +14,7 @@
 //
 // Wiring (defaults - change pins below if needed):
 //   Encoder 1 (param select): A=2, B=3, Btn=4
-//   Encoder 2 (value edit)  : A=5, B=6, Btn=7
+//   Encoder 2 (value edit)  : A=14, B=15, Btn=16
 //   Display: I2C SDA=18, SCL=19, address 0x27
 //
 // MIDI: USB MIDI note on/off triggers both envelopes
@@ -79,8 +79,8 @@ Encoder encSelect(2, 3);
 const int BTN_SELECT = 4;
 
 // Encoder 2 - value edit
-Encoder encValue(5, 6);
-const int BTN_VALUE = 7;
+Encoder encValue(14, 15);
+const int BTN_VALUE = 16;
 
 long lastSelectPos = 0;
 long lastValuePos  = 0;
